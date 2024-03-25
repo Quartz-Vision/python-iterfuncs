@@ -1,11 +1,13 @@
 import asyncio
 from types import EllipsisType
-from typing import AsyncIterator, AsyncIterable, Awaitable, Callable, Concatenate, Iterable, Iterator, Literal, overload
+from typing import AsyncIterable, AsyncIterator, Awaitable, Iterable, Iterator, overload
 
 from .asyncio import awaitable
 
 
-async def aenumerate[T](iter: AsyncIterable[T], start=0) -> AsyncIterator[tuple[int, T]]:
+async def aenumerate[
+    T
+](iter: AsyncIterable[T], start=0) -> AsyncIterator[tuple[int, T]]:
     i = start
     async for elem in iter:
         yield i, elem
@@ -41,7 +43,9 @@ def batched[T](values: Iterable[T], batch_size=1, rest=True) -> Iterator[list[T]
         yield batch
 
 
-async def abatched[T](values: AsyncIterable[T], batch_size=1, rest=True) -> AsyncIterator[list[T]]:
+async def abatched[
+    T
+](values: AsyncIterable[T], batch_size=1, rest=True) -> AsyncIterator[list[T]]:
     batch = []
     async for val in values:
         batch.append(val)
@@ -53,15 +57,19 @@ async def abatched[T](values: AsyncIterable[T], batch_size=1, rest=True) -> Asyn
         yield batch
 
 
-
-
 @overload
-async def atuple[T1, T2](v1: Awaitable[T1] | T1, v2: Awaitable[T2] | T2, /) -> tuple[T1, T2]:
+async def atuple[
+    T1, T2
+](v1: Awaitable[T1] | T1, v2: Awaitable[T2] | T2, /) -> tuple[T1, T2]:
     ...
 
 
 @overload
-async def atuple[T1, T2, T3](v1: Awaitable[T1] | T1, v2: Awaitable[T2] | T2, v3: Awaitable[T3] | T3, /) -> tuple[T1, T2, T3]:
+async def atuple[
+    T1, T2, T3
+](v1: Awaitable[T1] | T1, v2: Awaitable[T2] | T2, v3: Awaitable[T3] | T3, /) -> tuple[
+    T1, T2, T3
+]:
     ...
 
 
@@ -77,7 +85,8 @@ async def atuple(*values):
     """
 
     return (
-        tuple(await asyncio.gather(*[awaitable(value) for value in values])) if values
+        tuple(await asyncio.gather(*[awaitable(value) for value in values]))
+        if values
         else tuple()
     )
 
@@ -86,7 +95,9 @@ class __Empty:
     pass
 
 
-async def as_completed_gather[T](coroutines: Iterable[Awaitable[T]], batch_size=8) -> AsyncIterator[T]:
+async def as_completed_gather[
+    T
+](coroutines: Iterable[Awaitable[T]], batch_size=8) -> AsyncIterator[T]:
     """
     Runs coroutines in batches. It yields results in the order of the coroutines' received,
     but also tries to do it in order of their completion.
@@ -94,7 +105,9 @@ async def as_completed_gather[T](coroutines: Iterable[Awaitable[T]], batch_size=
     unlike in `asyncio.gather`
     """
 
-    empty = __Empty()  # it's safer to define it here to avoid any possible collisions with user's data
+    empty = (
+        __Empty()
+    )  # it's safer to define it here to avoid any possible collisions with user's data
     empty_data: list[T | __Empty] = [empty for _ in range(batch_size)]
 
     for batch in batched(coroutines, batch_size):

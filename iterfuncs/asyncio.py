@@ -1,8 +1,7 @@
 import asyncio
+import concurrent.futures
 from functools import wraps
 from typing import Any, Awaitable, Callable, Generator
-import concurrent.futures
-
 
 type FutureLike[T] = asyncio.Future[T] | Generator[Any, None, T] | Awaitable[T]
 
@@ -25,7 +24,11 @@ def as_async[**P, T](func: Callable[P, T]) -> Callable[P, Awaitable[T]]:
     return wrapper
 
 
-def run_in_loop_background[T](coro: FutureLike[T], loop: asyncio.AbstractEventLoop | None = None) -> concurrent.futures.Future[T]:
+def run_in_loop_background[
+    T
+](
+    coro: FutureLike[T], loop: asyncio.AbstractEventLoop | None = None
+) -> concurrent.futures.Future[T]:
     return asyncio.run_coroutine_threadsafe(coro, loop or get_loop())
 
 
@@ -33,4 +36,3 @@ async def awaitable[T](value: T | Awaitable[T]) -> T:
     if isinstance(value, Awaitable):
         return await value
     return value
-

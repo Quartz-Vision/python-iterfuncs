@@ -1,9 +1,8 @@
-from collections.abc import Awaitable
 import weakref
+from collections.abc import Awaitable
 from functools import wraps
 from time import time
-from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, Self, TypeAlias, Unpack
-
+from typing import Any, Callable, Concatenate
 
 type IdT[T] = Callable[[T], T]
 type MethodT[**P, T] = Callable[Concatenate[Any, P], T]
@@ -11,14 +10,14 @@ type DecoratorFactoryT[**P, T] = Callable[P, IdT[T]]
 
 
 def make_hash(*args, **kwargs):
-    return hash((args, tuple(v for _, v in sorted(kwargs.items(), key=lambda item: item[0]))))
+    return hash(
+        (args, tuple(v for _, v in sorted(kwargs.items(), key=lambda item: item[0])))
+    )
 
 
-def ttl_cache[**P, T](
-    ttl: int = 3600,
-    key: Callable[..., int] | None = None,
-    size: int = -1,
-) -> IdT:
+def ttl_cache[
+    **P, T
+](ttl: int = 3600, key: Callable[..., int] | None = None, size: int = -1,) -> IdT:
     """
     Creates a function with time-limited cache.
     TTL is specified in seconds.
@@ -33,7 +32,9 @@ def ttl_cache[**P, T](
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             nonlocal cache, old_cache_version
 
-            cache_version = time() // ttl  # in fact, separate time in chunks of ttl and use the chunk number as version
+            cache_version = (
+                time() // ttl
+            )  # in fact, separate time in chunks of ttl and use the chunk number as version
 
             if old_cache_version != cache_version:
                 del cache
@@ -58,11 +59,13 @@ def ttl_cache[**P, T](
     return ttl_decorator
 
 
-def async_cache_adapter[**P, **DP, DT](
-    cache_decorator_factory: DecoratorFactoryT[P, Callable[DP, Callable[[], Awaitable[DT]]]]
-) -> (
-    DecoratorFactoryT[P, Callable[DP, Awaitable[DT]]]
-):
+def async_cache_adapter[
+    **P, **DP, DT
+](
+    cache_decorator_factory: DecoratorFactoryT[
+        P, Callable[DP, Callable[[], Awaitable[DT]]]
+    ]
+) -> DecoratorFactoryT[P, Callable[DP, Awaitable[DT]]]:
     """
     Should be used only for async functions. Every time it will return a !new! coroutine that returns cached value,
         so it should not be used inside other adapters that provide additional cache capabilities.
@@ -101,11 +104,11 @@ def async_cache_adapter[**P, **DP, DT](
     return transformed_decorator_factory
 
 
-def method_cache_adapter[**P, **DP, DT](
-    cache_decorator_factory: DecoratorFactoryT[P, MethodT[DP, DT]]
-) -> (
-    DecoratorFactoryT[P, MethodT[DP, DT]]
-):
+def method_cache_adapter[
+    **P, **DP, DT
+](cache_decorator_factory: DecoratorFactoryT[P, MethodT[DP, DT]]) -> DecoratorFactoryT[
+    P, MethodT[DP, DT]
+]:
     """
     Should be used only for instance methods and be the top level adapter (wrap all other adapters),
     so it can prevent them from handling `self`
