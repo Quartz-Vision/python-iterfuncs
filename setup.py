@@ -13,7 +13,7 @@ with open(ROOT / "requirements.txt") as fr:
 
 setuptools.setup(
     name="iterfuncs",
-    version="0.2.2",
+    version="0.1.0",
     author="liava",
     author_email="liava@tuta.io",
     description="Collection of iteration, caching and async tools",
