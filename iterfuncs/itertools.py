@@ -5,9 +5,10 @@ from typing import AsyncIterable, AsyncIterator, Awaitable, Iterable, Iterator, 
 from .asyncio import awaitable
 
 
-async def aenumerate[
-    T
-](iter: AsyncIterable[T], start=0) -> AsyncIterator[tuple[int, T]]:
+async def aenumerate[T](iter: AsyncIterable[T], start=0) -> AsyncIterator[tuple[int, T]]:
+    """
+    Asynchronous version of `enumerate` function.
+    """
     i = start
     async for elem in iter:
         yield i, elem
@@ -15,6 +16,9 @@ async def aenumerate[
 
 
 async def anext[T](iterator: AsyncIterator[T], default: T | EllipsisType = ...) -> T:
+    """
+    Asynchronous version of `next` function.
+    """
     try:
         return await iterator.__anext__()
     except StopAsyncIteration as e:
@@ -24,6 +28,9 @@ async def anext[T](iterator: AsyncIterator[T], default: T | EllipsisType = ...) 
 
 
 async def aunique[T](iter: AsyncIterable[T]) -> AsyncIterator[T]:
+    """
+    Asynchronous version of `unique_everseen` function.
+    """
     seen = set()
     async for elem in iter:
         if elem not in seen:
@@ -31,7 +38,25 @@ async def aunique[T](iter: AsyncIterable[T]) -> AsyncIterator[T]:
             yield elem
 
 
+async def aunique_justseen[T](iter: AsyncIterable[T]) -> AsyncIterator[T]:
+    """
+    Asynchronous version of `unique_justseen` function.
+    """
+    last = object()
+    async for elem in iter:
+        if elem != last:
+            last = elem
+            yield elem
+
+
 def batched[T](values: Iterable[T], batch_size=1, rest=True) -> Iterator[list[T]]:
+    """
+    Iterator that splits values into batches.
+
+    :param values: Iterable of values.
+    :param batch_size: Size of a batch.
+    :param rest: If True, the last batch will be yielded even if it's smaller than `batch_size`.
+    """
     batch = []
     for val in values:
         batch.append(val)
@@ -46,6 +71,9 @@ def batched[T](values: Iterable[T], batch_size=1, rest=True) -> Iterator[list[T]
 async def abatched[
     T
 ](values: AsyncIterable[T], batch_size=1, rest=True) -> AsyncIterator[list[T]]:
+    """
+    Asynchronous version of `batched` function.
+    """
     batch = []
     async for val in values:
         batch.append(val)
@@ -60,8 +88,7 @@ async def abatched[
 @overload
 async def atuple[
     T1, T2
-](v1: Awaitable[T1] | T1, v2: Awaitable[T2] | T2, /) -> tuple[T1, T2]:
-    ...
+](v1: Awaitable[T1] | T1, v2: Awaitable[T2] | T2, /) -> tuple[T1, T2]: ...
 
 
 @overload
@@ -69,13 +96,11 @@ async def atuple[
     T1, T2, T3
 ](v1: Awaitable[T1] | T1, v2: Awaitable[T2] | T2, v3: Awaitable[T3] | T3, /) -> tuple[
     T1, T2, T3
-]:
-    ...
+]: ...
 
 
 @overload
-async def atuple[T](*values: Awaitable[T] | T) -> tuple[T, ...]:
-    ...
+async def atuple[T](*values: Awaitable[T] | T) -> tuple[T, ...]: ...
 
 
 async def atuple(*values):
@@ -101,8 +126,8 @@ async def as_completed_gather[
     """
     Runs coroutines in batches. It yields results in the order of the coroutines' received,
     but also tries to do it in order of their completion.
-    So you have a CHANCE to move to the next iteration until the next coroutines are completed,
-    unlike in `asyncio.gather`
+    So you have a CHANCE to move to the next iteration until all the coroutines are completed,
+    unlike in `asyncio.gather`. Uses `asyncio.as_completed` under the hood.
     """
 
     empty = (

@@ -2,14 +2,15 @@ import weakref
 from collections.abc import Awaitable
 from functools import wraps
 from time import time
-from typing import Any, Callable, Concatenate
+from typing import Any, Callable
 
-type IdT[T] = Callable[[T], T]
-type MethodT[**P, T] = Callable[Concatenate[Any, P], T]
-type DecoratorFactoryT[**P, T] = Callable[P, IdT[T]]
+from iterfuncs.typing import DecoratorFactoryT, IdT, MethodT
 
 
 def make_hash(*args, **kwargs):
+    """
+    Generates hash from args and kwargs.
+    """
     return hash(
         (args, tuple(v for _, v in sorted(kwargs.items(), key=lambda item: item[0])))
     )
@@ -17,12 +18,15 @@ def make_hash(*args, **kwargs):
 
 def ttl_cache[
     **P, T
-](ttl: int = 3600, key: Callable[..., int] | None = None, size: int = -1,) -> IdT:
+](ttl: int = 3600, key: Callable[..., int] = make_hash, size: int = -1,) -> IdT:
     """
     Creates a function with time-limited cache.
     TTL is specified in seconds.
+
+    :param ttl: time to live in seconds
+    :param key: function that generates cache key. By default, it uses make_hash
+    :param size: maximum number of items in cache. If -1, cache is unlimited
     """
-    key_generator = key or make_hash
 
     def ttl_decorator(func: Callable[P, T]) -> Callable[P, T]:
         cache = {}
@@ -41,7 +45,7 @@ def ttl_cache[
                 cache = {}
                 old_cache_version = cache_version
 
-            cache_key = key_generator(*args, **kwargs)
+            cache_key = key(*args, **kwargs)
             if cache_key in cache:
                 return cache[cache_key]
 
@@ -152,5 +156,5 @@ def method_cache_adapter[
     return transformed_decorator_factory
 
 
-def async_method_cache_adapter(cache_decorator_factory):
+def amethod_cache_adapter(cache_decorator_factory):
     return method_cache_adapter(async_cache_adapter(cache_decorator_factory))
