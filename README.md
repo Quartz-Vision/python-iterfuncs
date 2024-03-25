@@ -1,4 +1,4 @@
-# lambda-api
+# iterfuncs
 
 A collection of tools of async and sync iteration/caching and some funcitonal stuff
 
