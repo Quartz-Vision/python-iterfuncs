@@ -16,7 +16,7 @@ setuptools.setup(
     version="0.2.2",
     author="liava",
     author_email="liava@tuta.io",
-    description="Collectio of iteration, caching and async tools",
+    description="Collection of iteration, caching and async tools",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Quartz-Vision/python-iterfuncs",
