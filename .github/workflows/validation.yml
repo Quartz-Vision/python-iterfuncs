@@ -46,7 +46,7 @@ jobs:
       - name: Black
         run: |
           . .venv/bin/activate
-          python -m black --check .
+          python -m black --check . --line-length 89
 
       - name: Flake8
         run: |
