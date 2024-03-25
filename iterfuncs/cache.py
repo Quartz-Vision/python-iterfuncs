@@ -1,5 +1,6 @@
 import weakref
 from collections.abc import Awaitable
+from functools import lru_cache as _lru_cache
 from functools import wraps
 from time import time
 from typing import Any, Callable
@@ -158,3 +159,7 @@ def method_cache_adapter[
 
 def amethod_cache_adapter(cache_decorator_factory):
     return method_cache_adapter(async_cache_adapter(cache_decorator_factory))
+
+
+def lru_cache(maxsize: int) -> IdT:
+    return _lru_cache(maxsize)
