@@ -1,14 +1,6 @@
 import asyncio
 from types import EllipsisType
-from typing import (
-    AsyncIterable,
-    AsyncIterator,
-    Awaitable,
-    Coroutine,
-    Iterable,
-    Iterator,
-    overload,
-)
+from typing import AsyncIterable, AsyncIterator, Awaitable, Iterable, Iterator, overload
 
 from .asyncio import awaitable
 
@@ -128,11 +120,12 @@ class __Empty:
     pass
 
 
-async def as_completed_limited[
+async def _as_completed_limited_return_exceptions[
     T
-](coroutines: Iterable[Coroutine[None, None, T]], concurrency=8) -> AsyncIterator[T]:
+](coroutines: Iterable[Awaitable[T]], concurrency: int) -> AsyncIterator[T | Exception]:
     """
-    Works like `asyncio.as_completed`, but limits the number of coroutines running at the same time.
+    Returns exceptions as well as results.
+    Has a slight overhead compared to `_as_completed_limited_raise_exceptions` because of try-except.
     """
     loop = asyncio.get_event_loop()
     tasks: list[asyncio.Task | None] = [None for _ in range(concurrency)]
@@ -140,54 +133,205 @@ async def as_completed_limited[
     task_buffer_idx = 0
     for coro in coroutines:
         while True:
+            task_buffer_idx = (task_buffer_idx + 1) % concurrency
             task = tasks[task_buffer_idx]
             if task is None or task.done():
-                tasks[task_buffer_idx] = loop.create_task(coro)
+                tasks[task_buffer_idx] = loop.create_task(coro)  # type: ignore
+                if task is not None:
+                    try:
+                        yield await task
+                    except Exception as e:
+                        yield e
+                break
+            elif task_buffer_idx == concurrency - 1:
+                # let the event loop run to allow other tasks to complete
+                await asyncio.sleep(0)
+
+    for task in asyncio.as_completed(t for t in tasks if t is not None):
+        try:
+            yield await task
+        except Exception as e:
+            yield e
+
+
+async def _as_completed_limited_raise_exceptions[
+    T
+](coroutines: Iterable[Awaitable[T]], concurrency: int) -> AsyncIterator[T]:
+    """
+    Doesn't handle exceptions. So they will be raised.
+    """
+    loop = asyncio.get_event_loop()
+    tasks: list[asyncio.Task | None] = [None for _ in range(concurrency)]
+
+    task_buffer_idx = -1
+    for coro in coroutines:
+        while True:
+            task_buffer_idx = (task_buffer_idx + 1) % concurrency
+            task = tasks[task_buffer_idx]
+            if task is None or task.done():
+                tasks[task_buffer_idx] = loop.create_task(coro)  # type: ignore
                 if task is not None:
                     yield await task
-                task_buffer_idx = (task_buffer_idx + 1) % concurrency
                 break
-            else:
-                task_buffer_idx = (task_buffer_idx + 1) % concurrency
+            elif task_buffer_idx == concurrency - 1:
                 # let the event loop run to allow other tasks to complete
-                if task_buffer_idx == 0:
-                    await asyncio.sleep(0)
+                await asyncio.sleep(0)
 
     for task in asyncio.as_completed(t for t in tasks if t is not None):
         yield await task
 
 
-async def as_completed_gather[
+def as_completed_limited[
     T
-](coroutines: Iterable[Awaitable[T]], batch_size=8) -> AsyncIterator[T]:
+](
+    coroutines: Iterable[Awaitable[T]], concurrency=8, return_exceptions=False
+) -> AsyncIterator[T | Exception]:
+    """
+    Works like `asyncio.as_completed`, but limits the number of coroutines running at the same time.
+
+    Args:
+        coroutines: Iterable of awaitable objects to run concurrently
+        concurrency: Maximum number of coroutines to run at the same time (default: 8)
+        return_exceptions: If True, exceptions are returned as values instead of being raised (default: False)
+
+    Returns:
+        AsyncIterator that yields results as they complete
+
+    Examples:
+        >>> async def example():
+        ...     coros = [asyncio.sleep(1), asyncio.sleep(2), asyncio.sleep(0.5)]
+        ...     async for result in as_completed_limited(coros, concurrency=2):
+        ...         print(result)
+        >>> # Will print results as they complete, with max 2 running at once
+    """
+    if return_exceptions:
+        return _as_completed_limited_return_exceptions(coroutines, concurrency)
+    else:
+        return _as_completed_limited_raise_exceptions(coroutines, concurrency)
+
+
+async def _as_completed_gather_return_exceptions[
+    T
+](coroutines: Iterable[Awaitable[T]], batch_size: int) -> AsyncIterator[T | Exception]:
+    """
+    Returns exceptions as well as results.
+    Has a slight overhead compared to `_as_completed_gather_raise_exceptions` because of try-except.
+    """
+    loop = asyncio.get_event_loop()
+    tasks: list[tuple[int, asyncio.Task] | None] = [None for _ in range(batch_size)]
+
+    task_buffer_idx = -1
+    yield_idx = 0
+    for coro_idx, coro in enumerate(coroutines):
+        while True:
+            task_buffer_idx = (task_buffer_idx + 1) % batch_size
+            item = tasks[task_buffer_idx]
+            if item is not None:
+                task_coro_idx, task = item
+
+                if task_coro_idx == yield_idx and task.done():
+                    tasks[task_buffer_idx] = (coro_idx, loop.create_task(coro))  # type: ignore
+                    yield_idx += 1
+                    try:
+                        yield await task
+                    except Exception as e:
+                        yield e
+                    break
+                elif task_buffer_idx == batch_size - 1:
+                    await asyncio.sleep(0)
+            else:
+                tasks[task_buffer_idx] = (coro_idx, loop.create_task(coro))  # type: ignore
+                break
+
+    for item in sorted((t for t in tasks if t is not None), key=lambda x: x[0]):
+        try:
+            yield await item[1]
+        except Exception as e:
+            yield e
+
+
+async def _as_completed_gather_raise_exceptions[
+    T
+](coroutines: Iterable[Awaitable[T]], batch_size: int) -> AsyncIterator[T]:
+    """
+    Doesn't handle exceptions. So they will be raised.
+    """
+    loop = asyncio.get_event_loop()
+    tasks: list[tuple[int, asyncio.Task] | None] = [None for _ in range(batch_size)]
+
+    task_buffer_idx = -1
+    yield_idx = 0
+    for coro_idx, coro in enumerate(coroutines):
+        while True:
+            task_buffer_idx = (task_buffer_idx + 1) % batch_size
+            item = tasks[task_buffer_idx]
+            if item is not None:
+                task_coro_idx, task = item
+
+                if task_coro_idx == yield_idx and task.done():
+                    tasks[task_buffer_idx] = (coro_idx, loop.create_task(coro))  # type: ignore
+                    yield_idx += 1
+                    yield await task
+                    break
+                elif task_buffer_idx == batch_size - 1:
+                    await asyncio.sleep(0)
+            else:
+                tasks[task_buffer_idx] = (coro_idx, loop.create_task(coro))  # type: ignore
+                break
+
+    for item in sorted((t for t in tasks if t is not None), key=lambda x: x[0]):
+        yield await item[1]
+
+
+def as_completed_gather[
+    T
+](
+    coroutines: Iterable[Awaitable[T]], batch_size=8, return_exceptions=False
+) -> AsyncIterator[T | Exception]:
     """
     Runs coroutines in batches. It yields results in the order of the coroutines' received,
     but also tries to do it in order of their completion.
     So you have a CHANCE to move to the next iteration until all the coroutines are completed,
     unlike in `asyncio.gather`. Uses `asyncio.as_completed` under the hood.
+
+    Args:
+        coroutines: Iterable of awaitable objects to run in batches
+        batch_size: Size of each batch (default: 8)
+        return_exceptions: If True, exceptions are returned as values instead of being raised (default: False)
+
+    Returns:
+        AsyncIterator that yields results as they complete
+
+    Examples:
+        >>> async def example():
+        ...     coros = [asyncio.sleep(1), asyncio.sleep(2), asyncio.sleep(0.5)]
+        ...     async for result in as_completed_gather(coros, batch_size=2):
+        ...         print(result)
+        >>> # Will print results as they complete, processing in batches of 2
     """
+    if return_exceptions:
+        return _as_completed_gather_return_exceptions(coroutines, batch_size)
+    else:
+        return _as_completed_gather_raise_exceptions(coroutines, batch_size)
 
-    empty = (
-        __Empty()
-    )  # it's safer to define it here to avoid any possible collisions with user's data
-    empty_data: list[T | __Empty] = [empty for _ in range(batch_size)]
 
-    for batch in batched(coroutines, batch_size):
-        # we need this to have 'slots' for results so we can recieve them in a random order and store
-        # them until we have some more results that we can yield in the right order
-        data = empty_data.copy()
-        yield_i = 0
-        for real_i, random_coro in enumerate(
-            asyncio.as_completed([atuple(n, coro) for n, coro in enumerate(batch)])
-        ):
-            coro_i, value = await random_coro
-            data[coro_i] = value
+async def consume[T](iter: AsyncIterable[T]):
+    """
+    Consumes an async iterable.
+    """
+    async for _ in iter:
+        pass
 
-            # try to yield results in order after the previous yielded until ther is a gap in the sequence (empty result)
-            # if there is a gap, it means that some coroutines are not completed yet and we should try to wait for them again
-            for i in range(yield_i, real_i + 1):
-                if data[i] is not empty:
-                    yield_i += 1
-                    yield data[i]  # type: ignore
-                else:
-                    break
+
+async def consume_raise[T](iter: AsyncIterable[T]) -> AsyncIterator[Exception]:
+    """
+    Consumes an async iterable, raising exceptions.
+    """
+    while True:
+        try:
+            async for _ in iter:
+                pass
+        except Exception as e:
+            yield e
+        else:
+            break
