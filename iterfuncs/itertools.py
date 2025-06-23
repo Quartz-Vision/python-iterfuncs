@@ -1,6 +1,14 @@
 import asyncio
 from types import EllipsisType
-from typing import AsyncIterable, AsyncIterator, Awaitable, Iterable, Iterator, overload
+from typing import (
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Coroutine,
+    Iterable,
+    Iterator,
+    overload,
+)
 
 from .asyncio import awaitable
 
@@ -118,6 +126,35 @@ async def atuple(*values):
 
 class __Empty:
     pass
+
+
+async def as_completed_limited[
+    T
+](coroutines: Iterable[Coroutine[None, None, T]], concurrency=8) -> AsyncIterator[T]:
+    """
+    Works like `asyncio.as_completed`, but limits the number of coroutines running at the same time.
+    """
+    loop = asyncio.get_event_loop()
+    tasks: list[asyncio.Task | None] = [None for _ in range(concurrency)]
+
+    task_buffer_idx = 0
+    for coro in coroutines:
+        while True:
+            task = tasks[task_buffer_idx]
+            if task is None or task.done():
+                tasks[task_buffer_idx] = loop.create_task(coro)
+                if task is not None:
+                    yield await task
+                task_buffer_idx = (task_buffer_idx + 1) % concurrency
+                break
+            else:
+                task_buffer_idx = (task_buffer_idx + 1) % concurrency
+                # let the event loop run to allow other tasks to complete
+                if task_buffer_idx == 0:
+                    await asyncio.sleep(0)
+
+    for task in asyncio.as_completed(t for t in tasks if t is not None):
+        yield await task
 
 
 async def as_completed_gather[
