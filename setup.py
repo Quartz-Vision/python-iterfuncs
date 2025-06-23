@@ -13,7 +13,7 @@ with open(ROOT / "requirements.txt") as fr:
 
 setuptools.setup(
     name="iterfuncs",
-    version="0.3.0",
+    version="1.0.0",
     author="liava",
     author_email="liava@tuta.io",
     description="Collection of iteration, caching and async tools",
@@ -22,10 +22,10 @@ setuptools.setup(
     url="https://github.com/Quartz-Vision/python-iterfuncs",
     packages=setuptools.find_packages(),
     classifiers=[
-        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.12",
+    python_requires=">=3.13",
     install_requires=reqs,
     package_data={
         "iterfuncs": [],

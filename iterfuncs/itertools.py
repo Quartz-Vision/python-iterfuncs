@@ -1,6 +1,14 @@
 import asyncio
 from types import EllipsisType
-from typing import AsyncIterable, AsyncIterator, Awaitable, Iterable, Iterator, overload
+from typing import (
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Iterable,
+    Iterator,
+    Literal,
+    overload,
+)
 
 from .asyncio import awaitable
 
@@ -116,10 +124,6 @@ async def atuple(*values):
     )
 
 
-class __Empty:
-    pass
-
-
 async def _as_completed_limited_return_exceptions[
     T
 ](coroutines: Iterable[Awaitable[T]], concurrency: int) -> AsyncIterator[T | Exception]:
@@ -158,7 +162,7 @@ async def _as_completed_limited_raise_exceptions[
     T
 ](coroutines: Iterable[Awaitable[T]], concurrency: int) -> AsyncIterator[T]:
     """
-    Doesn't handle exceptions. So they will be raised.
+    Doesn't handle exceptions, they will be raised during iteration
     """
     loop = asyncio.get_event_loop()
     tasks: list[asyncio.Task | None] = [None for _ in range(concurrency)]
@@ -181,10 +185,32 @@ async def _as_completed_limited_raise_exceptions[
         yield await task
 
 
+@overload
 def as_completed_limited[
     T
 ](
-    coroutines: Iterable[Awaitable[T]], concurrency=8, return_exceptions=False
+    coroutines: Iterable[Awaitable[T]],
+    concurrency: int,
+    return_exceptions: Literal[False],
+) -> AsyncIterator[T]: ...
+
+
+@overload
+def as_completed_limited[
+    T
+](
+    coroutines: Iterable[Awaitable[T]],
+    concurrency: int,
+    return_exceptions: Literal[True],
+) -> AsyncIterator[T | Exception]: ...
+
+
+def as_completed_limited[
+    T
+](
+    coroutines: Iterable[Awaitable[T]],
+    concurrency: int = 8,
+    return_exceptions: bool = False,
 ) -> AsyncIterator[T | Exception]:
     """
     Works like `asyncio.as_completed`, but limits the number of coroutines running at the same time.
@@ -212,19 +238,19 @@ def as_completed_limited[
 
 async def _as_completed_gather_return_exceptions[
     T
-](coroutines: Iterable[Awaitable[T]], batch_size: int) -> AsyncIterator[T | Exception]:
+](coroutines: Iterable[Awaitable[T]], concurrency: int) -> AsyncIterator[T | Exception]:
     """
     Returns exceptions as well as results.
     Has a slight overhead compared to `_as_completed_gather_raise_exceptions` because of try-except.
     """
     loop = asyncio.get_event_loop()
-    tasks: list[tuple[int, asyncio.Task] | None] = [None for _ in range(batch_size)]
+    tasks: list[tuple[int, asyncio.Task] | None] = [None for _ in range(concurrency)]
 
     task_buffer_idx = -1
     yield_idx = 0
     for coro_idx, coro in enumerate(coroutines):
         while True:
-            task_buffer_idx = (task_buffer_idx + 1) % batch_size
+            task_buffer_idx = (task_buffer_idx + 1) % concurrency
             item = tasks[task_buffer_idx]
             if item is not None:
                 task_coro_idx, task = item
@@ -237,7 +263,7 @@ async def _as_completed_gather_return_exceptions[
                     except Exception as e:
                         yield e
                     break
-                elif task_buffer_idx == batch_size - 1:
+                elif task_buffer_idx == concurrency - 1:
                     await asyncio.sleep(0)
             else:
                 tasks[task_buffer_idx] = (coro_idx, loop.create_task(coro))  # type: ignore
@@ -252,18 +278,18 @@ async def _as_completed_gather_return_exceptions[
 
 async def _as_completed_gather_raise_exceptions[
     T
-](coroutines: Iterable[Awaitable[T]], batch_size: int) -> AsyncIterator[T]:
+](coroutines: Iterable[Awaitable[T]], concurrency: int) -> AsyncIterator[T]:
     """
     Doesn't handle exceptions. So they will be raised.
     """
     loop = asyncio.get_event_loop()
-    tasks: list[tuple[int, asyncio.Task] | None] = [None for _ in range(batch_size)]
+    tasks: list[tuple[int, asyncio.Task] | None] = [None for _ in range(concurrency)]
 
     task_buffer_idx = -1
     yield_idx = 0
     for coro_idx, coro in enumerate(coroutines):
         while True:
-            task_buffer_idx = (task_buffer_idx + 1) % batch_size
+            task_buffer_idx = (task_buffer_idx + 1) % concurrency
             item = tasks[task_buffer_idx]
             if item is not None:
                 task_coro_idx, task = item
@@ -273,7 +299,7 @@ async def _as_completed_gather_raise_exceptions[
                     yield_idx += 1
                     yield await task
                     break
-                elif task_buffer_idx == batch_size - 1:
+                elif task_buffer_idx == concurrency - 1:
                     await asyncio.sleep(0)
             else:
                 tasks[task_buffer_idx] = (coro_idx, loop.create_task(coro))  # type: ignore
@@ -283,10 +309,32 @@ async def _as_completed_gather_raise_exceptions[
         yield await item[1]
 
 
+@overload
 def as_completed_gather[
     T
 ](
-    coroutines: Iterable[Awaitable[T]], batch_size=8, return_exceptions=False
+    coroutines: Iterable[Awaitable[T]],
+    concurrency: int,
+    return_exceptions: Literal[False],
+) -> AsyncIterator[T]: ...
+
+
+@overload
+def as_completed_gather[
+    T
+](
+    coroutines: Iterable[Awaitable[T]],
+    concurrency: int,
+    return_exceptions: Literal[True],
+) -> AsyncIterator[T | Exception]: ...
+
+
+def as_completed_gather[
+    T
+](
+    coroutines: Iterable[Awaitable[T]],
+    concurrency: int = 8,
+    return_exceptions: bool = False,
 ) -> AsyncIterator[T | Exception]:
     """
     Runs coroutines in batches. It yields results in the order of the coroutines' received,
@@ -296,7 +344,7 @@ def as_completed_gather[
 
     Args:
         coroutines: Iterable of awaitable objects to run in batches
-        batch_size: Size of each batch (default: 8)
+        concurrency: Size of each batch (default: 8)
         return_exceptions: If True, exceptions are returned as values instead of being raised (default: False)
 
     Returns:
@@ -305,14 +353,14 @@ def as_completed_gather[
     Examples:
         >>> async def example():
         ...     coros = [asyncio.sleep(1), asyncio.sleep(2), asyncio.sleep(0.5)]
-        ...     async for result in as_completed_gather(coros, batch_size=2):
+        ...     async for result in as_completed_gather(coros, concurrency=2):
         ...         print(result)
         >>> # Will print results as they complete, processing in batches of 2
     """
     if return_exceptions:
-        return _as_completed_gather_return_exceptions(coroutines, batch_size)
+        return _as_completed_gather_return_exceptions(coroutines, concurrency)
     else:
-        return _as_completed_gather_raise_exceptions(coroutines, batch_size)
+        return _as_completed_gather_raise_exceptions(coroutines, concurrency)
 
 
 async def consume[T](iter: AsyncIterable[T]):
